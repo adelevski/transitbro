@@ -14,6 +14,18 @@ const DEFAULT_POSITIONS_URL =
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const MIN_POLL_INTERVAL_MS = 5000;
 const MAX_POLL_INTERVAL_MS = 60000;
+const CTA_TIME_ZONE = "America/Chicago";
+
+const ctaTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: CTA_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23"
+});
 
 type JsonLike = Record<string, unknown>;
 
@@ -38,19 +50,121 @@ function toString(value: unknown, fallback = ""): string {
 }
 
 function toNumber(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
+
+  if (typeof value === "string" && value.trim().length === 0) {
+    return null;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeDirection(raw: unknown): string | null {
-  const code = toString(raw).trim();
+function getCtaTimeParts(timestampMs: number): Record<string, number> {
+  return Object.fromEntries(
+    ctaTimeFormatter
+      .formatToParts(timestampMs)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)])
+  );
+}
 
-  if (code === "1") {
-    return "Inbound";
+function parseCtaLocalTimestamp(value: string): string | null {
+  const match =
+    /^(\d{4})-?(\d{2})-?(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
   }
 
-  if (code === "5") {
-    return "Outbound";
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] =
+    match;
+  const expected = {
+    year: Number(yearText),
+    month: Number(monthText),
+    day: Number(dayText),
+    hour: Number(hourText),
+    minute: Number(minuteText),
+    second: Number(secondText)
+  };
+  const localAsUtc = Date.UTC(
+    expected.year,
+    expected.month - 1,
+    expected.day,
+    expected.hour,
+    expected.minute,
+    expected.second
+  );
+  const localAsUtcDate = new Date(localAsUtc);
+
+  if (
+    localAsUtcDate.getUTCFullYear() !== expected.year ||
+    localAsUtcDate.getUTCMonth() + 1 !== expected.month ||
+    localAsUtcDate.getUTCDate() !== expected.day ||
+    localAsUtcDate.getUTCHours() !== expected.hour ||
+    localAsUtcDate.getUTCMinutes() !== expected.minute ||
+    localAsUtcDate.getUTCSeconds() !== expected.second
+  ) {
+    return null;
+  }
+
+  let timestampMs = localAsUtc;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = getCtaTimeParts(timestampMs);
+    const renderedAsUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second
+    );
+    const nextTimestampMs = localAsUtc - (renderedAsUtc - timestampMs);
+    if (nextTimestampMs === timestampMs) {
+      break;
+    }
+    timestampMs = nextTimestampMs;
+  }
+
+  const actual = getCtaTimeParts(timestampMs);
+  if (
+    actual.year !== expected.year ||
+    actual.month !== expected.month ||
+    actual.day !== expected.day ||
+    actual.hour !== expected.hour ||
+    actual.minute !== expected.minute ||
+    actual.second !== expected.second
+  ) {
+    return null;
+  }
+
+  return new Date(timestampMs).toISOString();
+}
+
+export function normalizeCtaTimestamp(raw: unknown): string | null {
+  const value = toString(raw).trim();
+  if (value.length === 0) {
+    return null;
+  }
+
+  const ctaTimestamp = parseCtaLocalTimestamp(value);
+  if (ctaTimestamp) {
+    return ctaTimestamp;
+  }
+
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) ? new Date(timestampMs).toISOString() : null;
+}
+
+function normalizeDirection(
+  raw: unknown,
+  line: CtaRailLineConfig
+): string | null {
+  const code = toString(raw).trim();
+
+  if (code === "1" || code === "5") {
+    return line.directionLabels[code];
   }
 
   return code.length > 0 ? code : null;
@@ -84,36 +198,49 @@ function getPollIntervalMs(): number {
 
 function normalizeVehicle(
   train: JsonLike,
-  lineId: CtaRailLineId,
+  line: CtaRailLineConfig,
   fallbackUpdatedAt: string,
   index: number
 ): CtaRailVehicle | null {
   const lat = toNumber(train.lat);
   const lon = toNumber(train.lon);
+  const rawHeading = toNumber(train.heading);
+  const heading =
+    rawHeading !== null && rawHeading >= 0 && rawHeading <= 359
+      ? rawHeading
+      : null;
 
-  if (lat === null || lon === null) {
+  if (
+    lat === null ||
+    lon === null ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  ) {
     return null;
   }
 
   const runNumber = toString(train.rn, `run-${index + 1}`);
   const updatedAt =
-    toString(train.prdt) || toString(train.prdtm) || fallbackUpdatedAt;
-  const nextStopArrivalAtRaw = toString(train.arrT).trim();
-  const nextStopArrivalAt = nextStopArrivalAtRaw.length > 0 ? nextStopArrivalAtRaw : null;
+    normalizeCtaTimestamp(train.prdt) ??
+    normalizeCtaTimestamp(train.prdtm) ??
+    fallbackUpdatedAt;
+  const nextStopArrivalAt = normalizeCtaTimestamp(train.arrT);
 
   return {
-    id: `${lineId}-${runNumber}`,
-    line: lineId,
+    id: `${line.id}-${runNumber}`,
+    line: line.id,
     runNumber,
     lat,
     lon,
-    heading: toNumber(train.heading),
+    heading,
     isDelayed: parseDelayFlag(train.isDly),
     destination:
       toString(train.destNm) || toString(train.destSt) || "Unknown destination",
     nextStop: toString(train.nextStaNm) || "Unknown next stop",
     nextStopArrivalAt,
-    direction: normalizeDirection(train.trDr),
+    direction: normalizeDirection(train.trDr, line),
     updatedAt
   };
 }
@@ -122,11 +249,12 @@ function normalizeLineFeed(
   ctatt: JsonLike,
   line: CtaRailLineConfig
 ): CtaSingleLineFeedResponse {
-  const fallbackUpdatedAt = toString(ctatt.tmst) || new Date().toISOString();
+  const fallbackUpdatedAt =
+    normalizeCtaTimestamp(ctatt.tmst) ?? new Date().toISOString();
   const trains = extractTrains(ctatt);
   const vehicles = trains
     .map((train, index) =>
-      normalizeVehicle(train, line.id, fallbackUpdatedAt, index)
+      normalizeVehicle(train, line, fallbackUpdatedAt, index)
     )
     .filter((vehicle): vehicle is CtaRailVehicle => vehicle !== null)
     .sort((a, b) => a.runNumber.localeCompare(b.runNumber));

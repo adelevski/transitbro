@@ -2,15 +2,24 @@
   "name": "transitbro",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "sharp": "^0.35.4"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "test": "node --import tsx --test lib/*.test.ts app/api/cta/rail/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run test && npm run typecheck && npm run build"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
-    "next": "^15.0.0",
+    "next": "^15.5.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0"
@@ -20,6 +29,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "tsx": "^4.20.5",
     "typescript": "^5.7.2"
   }
 }

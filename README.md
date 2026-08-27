@@ -2,7 +2,7 @@
 
 Live public transit dashboard for Chicago CTA rail, built to evolve in small iterations.
 
-## Current scope (Iteration 4)
+## Current scope (Iteration 5)
 - Live CTA rail train positions for all lines (Train Tracker `ttpositions`):
   - `blue`, `red`, `brn`, `g`, `org`, `p`, `pink`, `y`.
 - Dark-theme map dashboard with:
@@ -19,6 +19,8 @@ Live public transit dashboard for Chicago CTA rail, built to evolve in small ite
     - terminal stations always visible,
     - intermediate stations shown only when zoomed in.
 - Server-side CTA proxy route so API key is never exposed to the browser.
+- Deterministic normalization and API tests for CTA response shapes, timestamps,
+  invalid coordinates, line selection, and upstream errors.
 
 ## Tech stack
 - Next.js (App Router) + TypeScript
@@ -26,10 +28,10 @@ Live public transit dashboard for Chicago CTA rail, built to evolve in small ite
 - CTA Train Tracker API (server-side fetch)
 
 ## Quick start
-1. Install Node.js 20+.
-2. Install dependencies:
+1. Install Node.js 20.9 or newer.
+2. Install the locked dependencies:
    ```bash
-   npm install
+   npm ci
    ```
 3. Create `.env.local` from `.env.example` and set `CTA_API_KEY`.
 4. Run:
@@ -37,6 +39,17 @@ Live public transit dashboard for Chicago CTA rail, built to evolve in small ite
    npm run dev
    ```
 5. Open `http://localhost:3000`.
+
+## Verification
+
+Run the complete local verification suite:
+
+```bash
+npm run check
+```
+
+This runs deterministic tests, the TypeScript compiler, and a production build.
+The same command runs in GitHub Actions for pushes to `main` and pull requests.
 
 ## Environment variables
 - `CTA_API_KEY` (required): your CTA Train Tracker API key.
@@ -55,8 +68,26 @@ Live public transit dashboard for Chicago CTA rail, built to evolve in small ite
 
 ## Important notes
 - Polling every 5 seconds is reasonable for local development and single-user usage.
+- Feed fields and Chicago-local timestamp handling follow the official
+  [CTA Train Tracker API documentation](https://www.transitchicago.com/developers/ttdocs/).
 - CTA Train Tracker terms currently mention a default daily API transaction limit of 100,000 per API key, so total traffic across all clients should be monitored as usage grows.
 - The app is intentionally modular and can be extended line-by-line.
+
+## Production deployment
+
+Transitbro runs as a standard Node.js Next.js server; static-only hosting is not
+supported because the CTA key must remain on the server.
+
+1. Use Node.js 20.9 or newer and run `npm ci`.
+2. Configure `CTA_API_KEY` in the hosting provider's server-side environment.
+   Never prefix it with `NEXT_PUBLIC_`.
+3. Run `npm run build`, then start with `npm run start`.
+4. Allow outbound HTTPS access to CTA Train Tracker. Browsers also need access
+   to the configured CARTO/OpenStreetMap tile endpoints.
+
+Leave `CTA_TRAIN_POSITIONS_URL` unset in normal production deployments. A
+platform such as Vercel can use the same build command and environment variable;
+no repository secret is required for CI because tests use mocked feed responses.
 
 ## Project continuity
 - [docs/ROADMAP.md](docs/ROADMAP.md)
