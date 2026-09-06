@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/cta/rail/route";
+import { GET as getBlueLine } from "@/app/api/cta/blue-line/route";
+import { GET as getRedLine } from "@/app/api/cta/red-line/route";
 
 const originalApiKey = process.env.CTA_API_KEY;
 const originalPositionsUrl = process.env.CTA_TRAIN_POSITIONS_URL;
@@ -38,7 +40,7 @@ describe("GET /api/cta/rail", () => {
     );
     assert.deepEqual(await response.json(), {
       error:
-        "Missing CTA_API_KEY. Add it to .env.local using your CTA Train Tracker key."
+        "Live transit data is unavailable. Please try again later."
     });
   });
 
@@ -102,4 +104,26 @@ describe("GET /api/cta/rail", () => {
     assert.deepEqual(payload.vehicles, []);
     assert.equal(fetchCallCount, 0);
   });
+});
+
+
+it("keeps credentials and raw upstream errors out of every API response", async () => {
+  process.env.CTA_API_KEY = "synthetic-secret";
+  globalThis.fetch = (async (_input, init) => {
+    assert.ok(init?.signal instanceof AbortSignal);
+    throw new Error("request failed: https://cta.test/?key=synthetic-secret");
+  }) as typeof fetch;
+
+  const responses = [
+    await GET(new NextRequest("https://transitbro.test/api/cta/rail?lines=blue")),
+    await getBlueLine(),
+    await getRedLine()
+  ];
+  for (const response of responses) {
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get("cache-control"), "no-store, no-cache, must-revalidate");
+    const body = await response.text();
+    assert.ok(!body.includes("synthetic-secret"));
+    assert.ok(body.includes("could not be refreshed"));
+  }
 });

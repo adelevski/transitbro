@@ -28,7 +28,7 @@ Live public transit dashboard for Chicago CTA rail, built to evolve in small ite
 - CTA Train Tracker API (server-side fetch)
 
 ## Quick start
-1. Install Node.js 20.9 or newer.
+1. Install Node.js 22 or newer.
 2. Install the locked dependencies:
    ```bash
    npm ci
@@ -68,6 +68,8 @@ The same command runs in GitHub Actions for pushes to `main` and pull requests.
 
 ## Important notes
 - Polling every 5 seconds is reasonable for local development and single-user usage.
+- Upstream requests time out after 10 seconds. Browser errors omit raw provider
+  details so request URLs and server credentials cannot leak.
 - Feed fields and Chicago-local timestamp handling follow the official
   [CTA Train Tracker API documentation](https://www.transitchicago.com/developers/ttdocs/).
 - CTA Train Tracker terms currently mention a default daily API transaction limit of 100,000 per API key, so total traffic across all clients should be monitored as usage grows.
@@ -78,7 +80,7 @@ The same command runs in GitHub Actions for pushes to `main` and pull requests.
 Transitbro runs as a standard Node.js Next.js server; static-only hosting is not
 supported because the CTA key must remain on the server.
 
-1. Use Node.js 20.9 or newer and run `npm ci`.
+1. Use Node.js 22 or newer and run `npm ci`.
 2. Configure `CTA_API_KEY` in the hosting provider's server-side environment.
    Never prefix it with `NEXT_PUBLIC_`.
 3. Run `npm run build`, then start with `npm run start`.

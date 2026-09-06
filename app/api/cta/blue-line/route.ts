@@ -9,13 +9,13 @@ const NO_STORE_HEADERS = {
 };
 
 export async function GET() {
-  const apiKey = process.env.CTA_API_KEY;
+  const apiKey = process.env.CTA_API_KEY?.trim();
 
   if (!apiKey) {
     return NextResponse.json(
       {
         error:
-          "Missing CTA_API_KEY. Add it to .env.local using your CTA Train Tracker key."
+          "Live transit data is unavailable. Please try again later."
       },
       {
         status: 503,
@@ -29,13 +29,11 @@ export async function GET() {
     return NextResponse.json(feed, {
       headers: NO_STORE_HEADERS
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown CTA upstream error.";
-
+  } catch {
+    // Upstream errors can echo request URLs containing the server credential.
     return NextResponse.json(
       {
-        error: message
+        error: "Live transit data could not be refreshed. Please try again."
       },
       {
         status: 502,

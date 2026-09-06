@@ -12,6 +12,7 @@ import type {
 const DEFAULT_POSITIONS_URL =
   "https://lapi.transitchicago.com/api/1.0/ttpositions.aspx";
 const DEFAULT_POLL_INTERVAL_MS = 5000;
+const UPSTREAM_TIMEOUT_MS = 10_000;
 const MIN_POLL_INTERVAL_MS = 5000;
 const MAX_POLL_INTERVAL_MS = 60000;
 const CTA_TIME_ZONE = "America/Chicago";
@@ -293,6 +294,7 @@ export async function fetchCtaRailLinePositions(
 
   const response = await fetch(url.toString(), {
     cache: "no-store",
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     headers: {
       Accept: "application/json"
     }

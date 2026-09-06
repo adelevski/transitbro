@@ -1,5 +1,15 @@
 # transitbro handoff
 
+## September 6, 2026 review
+
+- All CTA API routes now keep provider error details server-side and treat blank
+  credentials as missing. Feed requests time out after 10 seconds.
+- Node.js 22 is the minimum supported runtime and CI baseline.
+- Updated agent guidance to match all-line coverage and current verification.
+- Run `npm run check` before deployment. Existing hosting and server-side CTA
+  configuration remain required; no new hosting destination is assumed.
+
+
 ## Session handshake checklist
 1. Read [README.md](../README.md), [docs/ARCHITECTURE.md](./ARCHITECTURE.md), and [docs/ROADMAP.md](./ROADMAP.md).
 2. Confirm the current phase and active milestone.
