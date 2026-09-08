@@ -9,6 +9,7 @@ export type CtaRailLineConfig = {
   glowColor: string;
   pathSegments: [number, number][][];
   terminalStationIds: string[];
+  directionLabels: Record<"1" | "5", string>;
 };
 
 export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
@@ -19,7 +20,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#00a1de",
     glowColor: "#5ccfff",
     pathSegments: CTA_RAIL_LINE_PATHS.blue,
-    terminalStationIds: ["40890", "40390"]
+    terminalStationIds: ["40890", "40390"],
+    directionLabels: { "1": "O'Hare-bound", "5": "Forest Park-bound" }
   },
   red: {
     id: "red",
@@ -28,7 +30,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#c60c30",
     glowColor: "#ff6f8f",
     pathSegments: CTA_RAIL_LINE_PATHS.red,
-    terminalStationIds: ["40900", "40450"]
+    terminalStationIds: ["40900", "40450"],
+    directionLabels: { "1": "Howard-bound", "5": "95th/Dan Ryan-bound" }
   },
   brn: {
     id: "brn",
@@ -37,7 +40,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#62361b",
     glowColor: "#a1724a",
     pathSegments: CTA_RAIL_LINE_PATHS.brn,
-    terminalStationIds: ["41290", "40850"]
+    terminalStationIds: ["41290", "40850"],
+    directionLabels: { "1": "Kimball-bound", "5": "Loop-bound" }
   },
   g: {
     id: "g",
@@ -46,7 +50,11 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#009b3a",
     glowColor: "#49d277",
     pathSegments: CTA_RAIL_LINE_PATHS.g,
-    terminalStationIds: ["40020", "40720", "40290"]
+    terminalStationIds: ["40020", "40720", "40290"],
+    directionLabels: {
+      "1": "Harlem/Lake-bound",
+      "5": "Ashland/63rd- or Cottage Grove-bound"
+    }
   },
   org: {
     id: "org",
@@ -55,7 +63,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#f9461c",
     glowColor: "#ff8368",
     pathSegments: CTA_RAIL_LINE_PATHS.org,
-    terminalStationIds: ["40930", "41700"]
+    terminalStationIds: ["40930", "41700"],
+    directionLabels: { "1": "Loop-bound", "5": "Midway-bound" }
   },
   p: {
     id: "p",
@@ -64,7 +73,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#522398",
     glowColor: "#8f61db",
     pathSegments: CTA_RAIL_LINE_PATHS.p,
-    terminalStationIds: ["41050", "40900"]
+    terminalStationIds: ["41050", "40900"],
+    directionLabels: { "1": "Linden-bound", "5": "Howard- or Loop-bound" }
   },
   pink: {
     id: "pink",
@@ -73,7 +83,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#e27ea6",
     glowColor: "#f8b9d1",
     pathSegments: CTA_RAIL_LINE_PATHS.pink,
-    terminalStationIds: ["40580", "41700"]
+    terminalStationIds: ["40580", "41700"],
+    directionLabels: { "1": "Loop-bound", "5": "54th/Cermak-bound" }
   },
   y: {
     id: "y",
@@ -82,7 +93,8 @@ export const CTA_RAIL_LINE_CONFIG: Record<CtaRailLineId, CtaRailLineConfig> = {
     color: "#f9e300",
     glowColor: "#fff07d",
     pathSegments: CTA_RAIL_LINE_PATHS.y,
-    terminalStationIds: ["40140", "40900"]
+    terminalStationIds: ["40140", "40900"],
+    directionLabels: { "1": "Skokie-bound", "5": "Howard-bound" }
   }
 };
 

@@ -11,24 +11,31 @@
 - Minimal live map dashboard.
 - Continuity docs (`ARCHITECTURE`, `HANDOFF`, `ROADMAP`, `AGENTS`).
 
-## Phase 1: Better Blue Line (in progress)
+## Phase 1: Better Blue Line (done)
 - Done:
   - Smoother marker motion interpolation between samples.
   - Station-aware dwell behavior in marker animation (brief stop at/near stations).
   - Route geometry overlay (Blue Line track shape).
   - Collapsible run list panel and refined dark-theme layout.
-- Next:
+- Deferred product enhancements:
   - Train list filters/sort and map highlight linking.
-  - API response validation and retry/backoff policy.
 
-## Phase 2: Expand rail coverage
-- In progress:
+## Phase 2: Expand rail coverage (done)
+- Delivered:
   - Shared rail feed service and per-route filtering.
   - Blue + Red line support with checkbox-based one/some/all selection.
   - Full CTA rail line set added to dashboard selection (`blue`, `red`, `brn`, `g`, `org`, `p`, `pink`, `y`).
+
+## Phase 2.1: Rail reliability (current)
+- Done:
+  - Deterministic feed normalization and route-handler tests with mocked CTA data.
+  - CTA local-time conversion to ISO timestamps for portable ETA handling.
+  - Invalid coordinate rejection and bounded polling configuration coverage.
+  - Locked Node.js packaging, CI verification, and production deployment guidance.
 - Next:
-  - Real-time arrival context from station APIs.
-  - Add server-side retry/backoff + telemetry for CTA upstream errors.
+  - Confirm field mapping against a real CTA response without recording credentials.
+  - Add server-side retry/backoff, a stale-data marker, and lightweight telemetry.
+  - Add automated validation for static GTFS path/station snapshots.
 
 ## Phase 3: Add buses
 - Integrate CTA Bus Tracker positions.

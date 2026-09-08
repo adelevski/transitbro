@@ -1,5 +1,15 @@
 # transitbro handoff
 
+## September 6, 2026 review
+
+- All CTA API routes now keep provider error details server-side and treat blank
+  credentials as missing. Feed requests time out after 10 seconds.
+- Node.js 22 is the minimum supported runtime and CI baseline.
+- Updated agent guidance to match all-line coverage and current verification.
+- Run `npm run check` before deployment. Existing hosting and server-side CTA
+  configuration remain required; no new hosting destination is assumed.
+
+
 ## Session handshake checklist
 1. Read [README.md](../README.md), [docs/ARCHITECTURE.md](./ARCHITECTURE.md), and [docs/ROADMAP.md](./ROADMAP.md).
 2. Confirm the current phase and active milestone.
@@ -9,7 +19,7 @@
    - what is next,
    - blockers/assumptions.
 
-## Current status (2026-02-24)
+## Current status (2026-08-27)
 - Iteration 1 implemented:
   - Next.js app skeleton.
   - CTA Blue Line proxy endpoint.
@@ -99,6 +109,29 @@
   - Updated motion planner to move trains along route offsets (`track-linear`, `track-arrive-dwell`) rather than unconstrained lat/lon vectors.
   - Retained station-only dwell semantics.
   - Verified `npm run typecheck` and `npm run build` pass.
+- Iteration 5 normalization, packaging, and CI hardening completed (2026-08-27):
+  - Fixed CTA compact local timestamps so feed sample times and next-stop ETAs
+    are emitted as unambiguous ISO instants using the `America/Chicago` timezone.
+    Both the documented compact form and the unzoned ISO form shown in CTA's
+    JSON examples are covered.
+  - Fixed malformed coordinates (`null`, blank, non-finite, or out of range)
+    being accepted as valid vehicle positions.
+  - Replaced incorrect generic inbound/outbound direction labels with CTA's
+    documented route-specific operational directions.
+  - Added deterministic mocked tests for singleton/array response handling,
+    timestamps, coordinate rejection, line selection, aggregation, upstream
+    errors, and `/api/cta/rail` response behavior.
+  - Added the `npm run check` verification command and GitHub Actions CI on
+    Node.js 20.
+  - Updated Next.js within version 15 and overrode vulnerable transitive
+    PostCSS/Sharp releases; `npm audit` reports no known vulnerabilities.
+  - Added reproducible install and production deployment instructions.
+  - Reviewed Traincountdown as read-only source material. Its clock display did
+    not warrant a separate user-facing feature; the useful underlying concern,
+    reliable time/countdown handling, was addressed in Transitbro's existing ETA
+    normalization and tests instead.
+  - Verified `npm test` (12 tests), `npm run typecheck`, `npm run build`, and
+    `npm audit` pass.
 
 ## Open items
 - Confirm CTA field mapping against real feed payload with valid key.
@@ -114,4 +147,5 @@
 - CTA API key is required.
 - CTA uptime and response latency determine freshness.
 - CTA Train Tracker default daily limit is documented as 100,000 API transactions per key.
-- No automated tests yet.
+- Automated tests use mocked CTA payloads; a credentialed live-feed smoke test
+  remains intentionally manual.

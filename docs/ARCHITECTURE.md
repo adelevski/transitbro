@@ -1,4 +1,4 @@
-# transitbro architecture (Iteration 4)
+# transitbro architecture (Iteration 5)
 
 ## System overview
 1. Browser requests `/api/cta/rail?lines=...` with selected line IDs.
@@ -9,6 +9,9 @@
    - predicted positions are constrained to line geometry (track polyline snapping + movement along track),
    - positions are corrected on each refresh using the latest API snapshot,
    - dwell pauses are only applied when a train is at its mapped station location.
+3. Server validates coordinates and normalizes train records into a stable internal rail vehicle model (`line`, `runNumber`, position, destination, next stop, heading).
+   CTA local timestamps are converted from Chicago time to unambiguous ISO timestamps before they cross the API boundary.
+4. Browser polls on the configured interval and interpolates marker positions between samples.
 5. Browser renders selected route geometries for all CTA rail lines from GTFS-derived path artifacts.
 6. Browser renders GTFS-derived station markers with zoom gating (line terminals always on, intermediate stations at higher zoom).
 
@@ -16,6 +19,7 @@
 - Keeps CTA credentials server-side.
 - Supports one/some/all line selection with one UI flow.
 - Keeps line-specific concerns in `lib/ctaRailLines.ts` so adding or adjusting lines remains centralized.
+- Keeps deterministic CTA fixtures at the normalization/API boundary, where malformed upstream data is cheapest to detect.
 
 ## Data model (current)
 - `CtaRailVehicle`
@@ -36,6 +40,7 @@
 - Multiple selected lines currently trigger one upstream request per line on each poll.
 - No bus feed integration yet.
 - No automated validation yet against official GTFS schedule updates (path/station snapshots are static artifacts).
+- No retry/backoff or stale-data indicator yet.
 
 ## Planned evolution
 - Add short-lived cache and eventually SSE/WebSocket fanout.
