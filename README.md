@@ -11,7 +11,7 @@ Live public transit dashboard for Chicago CTA rail, built to evolve in small ite
   - live multi-line vehicle markers,
   - direction arrows rendered inside train markers,
   - train popup status badge (`On time` / `Late`),
-  - smooth interpolation between samples,
+  - continuous interpolation between samples with station-aware dwell pauses,
   - per-line route overlays from CTA GTFS shape data for all CTA rail lines,
   - collapsible run lists per selected line, grouped by destination,
   - next-stop ETA shown for each run,

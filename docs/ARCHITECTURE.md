@@ -4,7 +4,11 @@
 1. Browser requests `/api/cta/rail?lines=...` with selected line IDs.
 2. Next.js route handler validates selected lines and fetches CTA Train Tracker `ttpositions` per selected line using server-side API key.
 3. Server normalizes train records into a stable internal rail vehicle model (`line`, `runNumber`, position, destination, next stop, heading).
-4. Browser polls on the configured interval and interpolates marker positions between samples.
+4. Browser polls on the configured interval and uses client-side dead-reckoning between samples:
+   - trains keep moving continuously based on estimated motion toward next stop/heading,
+   - predicted positions are constrained to line geometry (track polyline snapping + movement along track),
+   - positions are corrected on each refresh using the latest API snapshot,
+   - dwell pauses are only applied when a train is at its mapped station location.
 5. Browser renders selected route geometries for all CTA rail lines from GTFS-derived path artifacts.
 6. Browser renders GTFS-derived station markers with zoom gating (line terminals always on, intermediate stations at higher zoom).
 

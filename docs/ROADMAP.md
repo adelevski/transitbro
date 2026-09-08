@@ -14,6 +14,7 @@
 ## Phase 1: Better Blue Line (in progress)
 - Done:
   - Smoother marker motion interpolation between samples.
+  - Station-aware dwell behavior in marker animation (brief stop at/near stations).
   - Route geometry overlay (Blue Line track shape).
   - Collapsible run list panel and refined dark-theme layout.
 - Next:

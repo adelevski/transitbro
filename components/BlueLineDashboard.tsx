@@ -30,10 +30,89 @@ import {
 
 const CHICAGO_CENTER: LatLngTuple = [41.8781, -87.6298];
 const FALLBACK_POLL_INTERVAL_MS = 5000;
-const MAX_ANIMATION_DURATION_MS = 4200;
+const MAX_ANIMATION_DURATION_MS = 58000;
 const MIN_ANIMATION_DURATION_MS = 1200;
+const STATION_DWELL_RATIO = 0.1;
+const MIN_STATION_DWELL_MS = 450;
+const MAX_STATION_DWELL_MS = 1200;
+const STATION_HOLD_RADIUS_METERS = 30;
+const MIN_MOVE_SEGMENT_MS = 450;
+const MIN_ESTIMATED_SPEED_MPS = 1.5;
+const MAX_ESTIMATED_SPEED_MPS = 22;
+const MAX_TRACK_SNAP_METERS = 700;
 const SHOW_INTERMEDIATE_STATIONS_ZOOM = 12;
 const SHOW_INTERMEDIATE_STATION_LABELS_ZOOM = 14;
+
+const DEFAULT_LINE_SPEED_MPS: Record<CtaRailLineId, number> = {
+  blue: 11,
+  red: 10.5,
+  brn: 9,
+  g: 10,
+  org: 10.5,
+  p: 9.5,
+  pink: 9.5,
+  y: 11.5
+};
+
+type VehicleSample = {
+  vehicle: CtaRailVehicle;
+  sampledAtMs: number;
+};
+
+type LineTrack = {
+  points: [number, number][];
+  cumulativeMeters: number[];
+  totalMeters: number;
+};
+
+type TrackSnap = {
+  trackIndex: number;
+  offsetMeters: number;
+  lat: number;
+  lon: number;
+  distanceMeters: number;
+  forwardBearing: number | null;
+};
+
+type VehicleMotionPlan =
+  | {
+      kind: "linear";
+      startLat: number;
+      startLon: number;
+      endLat: number;
+      endLon: number;
+      durationMs: number;
+    }
+  | {
+      kind: "dwell";
+      lat: number;
+      lon: number;
+      durationMs: number;
+    }
+  | {
+      kind: "arrive-dwell";
+      startLat: number;
+      startLon: number;
+      stationLat: number;
+      stationLon: number;
+      moveDurationMs: number;
+      dwellDurationMs: number;
+    }
+  | {
+      kind: "track-linear";
+      trackIndex: number;
+      startOffsetMeters: number;
+      endOffsetMeters: number;
+      durationMs: number;
+    }
+  | {
+      kind: "track-arrive-dwell";
+      trackIndex: number;
+      startOffsetMeters: number;
+      stationOffsetMeters: number;
+      moveDurationMs: number;
+      dwellDurationMs: number;
+    };
 
 function createVehicleIcon(color: string, heading: number | null): DivIcon {
   const rotation =
@@ -106,12 +185,725 @@ function trainStatusClass(isDelayed: boolean): "late" | "on-time" {
   return isDelayed ? "late" : "on-time";
 }
 
-function easeInOutCubic(progress: number): number {
-  if (progress < 0.5) {
-    return 4 * progress * progress * progress;
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function distanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusMeters * c;
+}
+
+function normalizeStationName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function interpolateLinearPosition(
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number,
+  progress: number
+): { lat: number; lon: number } {
+  return {
+    lat: startLat + (endLat - startLat) * progress,
+    lon: startLon + (endLon - startLon) * progress
+  };
+}
+
+function angularDifferenceDegrees(a: number, b: number): number {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function projectPointToSegment(
+  pointLat: number,
+  pointLon: number,
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number
+): {
+  lat: number;
+  lon: number;
+  distanceMeters: number;
+  fraction: number;
+  segmentMeters: number;
+} {
+  const metersPerDegLat = 111320;
+  const metersPerDegLon =
+    111320 * Math.cos(toRadians((pointLat + startLat + endLat) / 3));
+  const bx = (endLon - startLon) * metersPerDegLon;
+  const by = (endLat - startLat) * metersPerDegLat;
+  const px = (pointLon - startLon) * metersPerDegLon;
+  const py = (pointLat - startLat) * metersPerDegLat;
+  const segmentSquared = bx * bx + by * by;
+
+  if (segmentSquared <= 0.000001) {
+    return {
+      lat: startLat,
+      lon: startLon,
+      distanceMeters: Math.sqrt(px * px + py * py),
+      fraction: 0,
+      segmentMeters: 0
+    };
   }
 
-  return 1 - Math.pow(-2 * progress + 2, 3) / 2;
+  const fraction = clamp((px * bx + py * by) / segmentSquared, 0, 1);
+  const cx = bx * fraction;
+  const cy = by * fraction;
+  const dx = px - cx;
+  const dy = py - cy;
+
+  return {
+    lat: startLat + cy / metersPerDegLat,
+    lon: startLon + cx / metersPerDegLon,
+    distanceMeters: Math.sqrt(dx * dx + dy * dy),
+    fraction,
+    segmentMeters: Math.sqrt(segmentSquared)
+  };
+}
+
+function buildLineTracks(pathSegments: [number, number][][]): LineTrack[] {
+  return pathSegments
+    .filter((segment) => segment.length >= 2)
+    .map((segment) => {
+      const cumulativeMeters: number[] = [0];
+      for (let i = 1; i < segment.length; i += 1) {
+        const previous = segment[i - 1];
+        const current = segment[i];
+        cumulativeMeters.push(
+          cumulativeMeters[i - 1] +
+            distanceMeters(previous[0], previous[1], current[0], current[1])
+        );
+      }
+
+      return {
+        points: segment,
+        cumulativeMeters,
+        totalMeters: cumulativeMeters[cumulativeMeters.length - 1]
+      };
+    });
+}
+
+function interpolateOnTrack(
+  track: LineTrack,
+  offsetMeters: number
+): { lat: number; lon: number } {
+  if (track.points.length === 0) {
+    return {
+      lat: 0,
+      lon: 0
+    };
+  }
+
+  const clampedOffset = clamp(offsetMeters, 0, track.totalMeters);
+  if (clampedOffset <= 0) {
+    return {
+      lat: track.points[0][0],
+      lon: track.points[0][1]
+    };
+  }
+
+  if (clampedOffset >= track.totalMeters) {
+    const last = track.points[track.points.length - 1];
+    return {
+      lat: last[0],
+      lon: last[1]
+    };
+  }
+
+  let segmentIndex = 1;
+  while (
+    segmentIndex < track.cumulativeMeters.length &&
+    track.cumulativeMeters[segmentIndex] < clampedOffset
+  ) {
+    segmentIndex += 1;
+  }
+
+  const startIndex = Math.max(0, segmentIndex - 1);
+  const segmentStartOffset = track.cumulativeMeters[startIndex];
+  const segmentEndOffset = track.cumulativeMeters[startIndex + 1];
+  const segmentLength = Math.max(0.001, segmentEndOffset - segmentStartOffset);
+  const fraction = clamp(
+    (clampedOffset - segmentStartOffset) / segmentLength,
+    0,
+    1
+  );
+  const startPoint = track.points[startIndex];
+  const endPoint = track.points[startIndex + 1];
+
+  return interpolateLinearPosition(
+    startPoint[0],
+    startPoint[1],
+    endPoint[0],
+    endPoint[1],
+    fraction
+  );
+}
+
+function findClosestPointOnSingleTrack(
+  track: LineTrack,
+  pointLat: number,
+  pointLon: number
+): Omit<TrackSnap, "trackIndex"> | null {
+  if (track.points.length < 2) {
+    return null;
+  }
+
+  let best: Omit<TrackSnap, "trackIndex"> | null = null;
+
+  for (let i = 1; i < track.points.length; i += 1) {
+    const startPoint = track.points[i - 1];
+    const endPoint = track.points[i];
+    const projected = projectPointToSegment(
+      pointLat,
+      pointLon,
+      startPoint[0],
+      startPoint[1],
+      endPoint[0],
+      endPoint[1]
+    );
+    const segmentOffset =
+      track.cumulativeMeters[i - 1] + projected.segmentMeters * projected.fraction;
+    const forwardBearing = bearingFromPoints(
+      startPoint[0],
+      startPoint[1],
+      endPoint[0],
+      endPoint[1]
+    );
+
+    if (!best || projected.distanceMeters < best.distanceMeters) {
+      best = {
+        offsetMeters: segmentOffset,
+        lat: projected.lat,
+        lon: projected.lon,
+        distanceMeters: projected.distanceMeters,
+        forwardBearing
+      };
+    }
+  }
+
+  return best;
+}
+
+function findClosestPointOnTracks(
+  tracks: LineTrack[],
+  pointLat: number,
+  pointLon: number
+): TrackSnap | null {
+  let best: TrackSnap | null = null;
+
+  for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+    const track = tracks[trackIndex];
+    const candidate = findClosestPointOnSingleTrack(track, pointLat, pointLon);
+    if (!candidate) {
+      continue;
+    }
+
+    if (!best || candidate.distanceMeters < best.distanceMeters) {
+      best = {
+        trackIndex,
+        ...candidate
+      };
+    }
+  }
+
+  return best;
+}
+
+function projectTowardsPoint(
+  startLat: number,
+  startLon: number,
+  targetLat: number,
+  targetLon: number,
+  distanceToProjectMeters: number
+): { lat: number; lon: number } {
+  const totalMeters = distanceMeters(startLat, startLon, targetLat, targetLon);
+  if (totalMeters < 0.5) {
+    return {
+      lat: targetLat,
+      lon: targetLon
+    };
+  }
+
+  const ratio = clamp(distanceToProjectMeters / totalMeters, 0, 1);
+  return interpolateLinearPosition(startLat, startLon, targetLat, targetLon, ratio);
+}
+
+function projectByHeading(
+  startLat: number,
+  startLon: number,
+  headingDegrees: number,
+  distanceToProjectMeters: number
+): { lat: number; lon: number } {
+  const headingRadians = toRadians(((headingDegrees % 360) + 360) % 360);
+  const northMeters = Math.cos(headingRadians) * distanceToProjectMeters;
+  const eastMeters = Math.sin(headingRadians) * distanceToProjectMeters;
+  const latOffset = northMeters / 111320;
+  const lonOffset = eastMeters / (111320 * Math.cos(toRadians(startLat)));
+
+  return {
+    lat: startLat + latOffset,
+    lon: startLon + lonOffset
+  };
+}
+
+function bearingFromPoints(
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number
+): number | null {
+  if (distanceMeters(startLat, startLon, endLat, endLon) < 1) {
+    return null;
+  }
+
+  const lat1 = toRadians(startLat);
+  const lat2 = toRadians(endLat);
+  const dLon = toRadians(endLon - startLon);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+  return (bearing + 360) % 360;
+}
+
+function parseArrivalTimestamp(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function estimateObservedSpeedMps(
+  previousSample: VehicleSample | undefined,
+  currentVehicle: CtaRailVehicle,
+  sampledAtMs: number
+): number | null {
+  if (!previousSample) {
+    return null;
+  }
+
+  const elapsedSeconds = (sampledAtMs - previousSample.sampledAtMs) / 1000;
+  if (elapsedSeconds <= 0.5) {
+    return null;
+  }
+
+  const movedMeters = distanceMeters(
+    previousSample.vehicle.lat,
+    previousSample.vehicle.lon,
+    currentVehicle.lat,
+    currentVehicle.lon
+  );
+  return movedMeters / elapsedSeconds;
+}
+
+function estimateHeadingDegrees(
+  vehicle: CtaRailVehicle,
+  previousSample: VehicleSample | undefined
+): number | null {
+  if (vehicle.heading !== null && Number.isFinite(vehicle.heading)) {
+    return vehicle.heading;
+  }
+
+  if (!previousSample) {
+    return null;
+  }
+
+  return bearingFromPoints(
+    previousSample.vehicle.lat,
+    previousSample.vehicle.lon,
+    vehicle.lat,
+    vehicle.lon
+  );
+}
+
+function buildMotionPlan(
+  startLat: number,
+  startLon: number,
+  vehicle: CtaRailVehicle,
+  intervalMs: number,
+  sampledAtMs: number,
+  previousSample: VehicleSample | undefined,
+  nextStopStation: (typeof CTA_STATIONS)[number] | undefined,
+  lineTracks: LineTrack[]
+): VehicleMotionPlan {
+  const animationDurationMs = Math.max(
+    MIN_ANIMATION_DURATION_MS,
+    Math.min(MAX_ANIMATION_DURATION_MS, intervalMs - 120)
+  );
+  const intervalSeconds = animationDurationMs / 1000;
+  const observedSpeedMps = estimateObservedSpeedMps(
+    previousSample,
+    vehicle,
+    sampledAtMs
+  );
+  const baseSpeedMps = clamp(
+    observedSpeedMps ?? DEFAULT_LINE_SPEED_MPS[vehicle.line],
+    MIN_ESTIMATED_SPEED_MPS,
+    MAX_ESTIMATED_SPEED_MPS
+  );
+  const dwellMs = clamp(
+    intervalMs * STATION_DWELL_RATIO,
+    MIN_STATION_DWELL_MS,
+    MAX_STATION_DWELL_MS
+  );
+
+  const startSnap = findClosestPointOnTracks(lineTracks, startLat, startLon);
+  const headingDegrees = estimateHeadingDegrees(vehicle, previousSample);
+
+  if (startSnap && startSnap.distanceMeters <= MAX_TRACK_SNAP_METERS) {
+    const activeTrack = lineTracks[startSnap.trackIndex];
+
+    if (nextStopStation) {
+      const stationOnActiveTrack = findClosestPointOnSingleTrack(
+        activeTrack,
+        nextStopStation.lat,
+        nextStopStation.lon
+      );
+      if (stationOnActiveTrack) {
+        const distanceToStationMeters = Math.abs(
+          stationOnActiveTrack.offsetMeters - startSnap.offsetMeters
+        );
+        const movingDirection =
+          stationOnActiveTrack.offsetMeters >= startSnap.offsetMeters ? 1 : -1;
+
+        if (
+          distanceToStationMeters <= STATION_HOLD_RADIUS_METERS ||
+          stationOnActiveTrack.distanceMeters <= STATION_HOLD_RADIUS_METERS
+        ) {
+          return {
+            kind: "dwell",
+            lat: stationOnActiveTrack.lat,
+            lon: stationOnActiveTrack.lon,
+            durationMs: animationDurationMs
+          };
+        }
+
+        const nextStopArrivalAtMs = parseArrivalTimestamp(vehicle.nextStopArrivalAt);
+        if (nextStopArrivalAtMs !== null && nextStopArrivalAtMs > sampledAtMs) {
+          const etaMs = nextStopArrivalAtMs - sampledAtMs;
+
+          if (etaMs <= animationDurationMs) {
+            const moveDurationMs = clamp(
+              etaMs,
+              MIN_MOVE_SEGMENT_MS,
+              animationDurationMs
+            );
+            const dwellDurationMs = Math.max(
+              0,
+              Math.min(dwellMs, animationDurationMs - moveDurationMs)
+            );
+            return {
+              kind: "track-arrive-dwell",
+              trackIndex: startSnap.trackIndex,
+              startOffsetMeters: startSnap.offsetMeters,
+              stationOffsetMeters: stationOnActiveTrack.offsetMeters,
+              moveDurationMs,
+              dwellDurationMs
+            };
+          }
+
+          const speedToStationMps = distanceToStationMeters / (etaMs / 1000);
+          const blendedSpeedMps = clamp(
+            observedSpeedMps !== null
+              ? speedToStationMps * 0.65 + observedSpeedMps * 0.35
+              : speedToStationMps,
+            MIN_ESTIMATED_SPEED_MPS,
+            MAX_ESTIMATED_SPEED_MPS
+          );
+          const projectedDistance = blendedSpeedMps * intervalSeconds;
+          const signedDistance = projectedDistance * movingDirection;
+          const maxSignedDistance = distanceToStationMeters * movingDirection;
+          const clampedSignedDistance =
+            movingDirection > 0
+              ? Math.min(signedDistance, maxSignedDistance)
+              : Math.max(signedDistance, maxSignedDistance);
+          return {
+            kind: "track-linear",
+            trackIndex: startSnap.trackIndex,
+            startOffsetMeters: startSnap.offsetMeters,
+            endOffsetMeters: clamp(
+              startSnap.offsetMeters + clampedSignedDistance,
+              0,
+              activeTrack.totalMeters
+            ),
+            durationMs: animationDurationMs
+          };
+        }
+
+        const projectedDistance = baseSpeedMps * intervalSeconds;
+        const signedDistance = projectedDistance * movingDirection;
+        const maxSignedDistance = distanceToStationMeters * movingDirection;
+        const clampedSignedDistance =
+          movingDirection > 0
+            ? Math.min(signedDistance, maxSignedDistance)
+            : Math.max(signedDistance, maxSignedDistance);
+        return {
+          kind: "track-linear",
+          trackIndex: startSnap.trackIndex,
+          startOffsetMeters: startSnap.offsetMeters,
+          endOffsetMeters: clamp(
+            startSnap.offsetMeters + clampedSignedDistance,
+            0,
+            activeTrack.totalMeters
+          ),
+          durationMs: animationDurationMs
+        };
+      }
+    }
+
+    if (headingDegrees !== null && startSnap.forwardBearing !== null) {
+      const forwardDifference = angularDifferenceDegrees(
+        headingDegrees,
+        startSnap.forwardBearing
+      );
+      const backwardDifference = angularDifferenceDegrees(
+        headingDegrees,
+        (startSnap.forwardBearing + 180) % 360
+      );
+      const directionSign = forwardDifference <= backwardDifference ? 1 : -1;
+      const projectedDistance = baseSpeedMps * intervalSeconds * directionSign;
+      return {
+        kind: "track-linear",
+        trackIndex: startSnap.trackIndex,
+        startOffsetMeters: startSnap.offsetMeters,
+        endOffsetMeters: clamp(
+          startSnap.offsetMeters + projectedDistance,
+          0,
+          activeTrack.totalMeters
+        ),
+        durationMs: animationDurationMs
+      };
+    }
+  }
+
+  if (nextStopStation) {
+    const distanceToStopMeters = distanceMeters(
+      startLat,
+      startLon,
+      nextStopStation.lat,
+      nextStopStation.lon
+    );
+
+    if (distanceToStopMeters <= STATION_HOLD_RADIUS_METERS) {
+      return {
+        kind: "dwell",
+        lat: nextStopStation.lat,
+        lon: nextStopStation.lon,
+        durationMs: animationDurationMs
+      };
+    }
+
+    const nextStopArrivalAtMs = parseArrivalTimestamp(vehicle.nextStopArrivalAt);
+    if (nextStopArrivalAtMs !== null && nextStopArrivalAtMs > sampledAtMs) {
+      const etaMs = nextStopArrivalAtMs - sampledAtMs;
+
+      if (etaMs <= animationDurationMs) {
+        const moveDurationMs = clamp(
+          etaMs,
+          MIN_MOVE_SEGMENT_MS,
+          animationDurationMs
+        );
+        const dwellDurationMs = Math.max(
+          0,
+          Math.min(dwellMs, animationDurationMs - moveDurationMs)
+        );
+        return {
+          kind: "arrive-dwell",
+          startLat,
+          startLon,
+          stationLat: nextStopStation.lat,
+          stationLon: nextStopStation.lon,
+          moveDurationMs,
+          dwellDurationMs
+        };
+      }
+
+      const speedToStationMps = distanceToStopMeters / (etaMs / 1000);
+      const blendedSpeedMps = clamp(
+        observedSpeedMps !== null
+          ? speedToStationMps * 0.65 + observedSpeedMps * 0.35
+          : speedToStationMps,
+        MIN_ESTIMATED_SPEED_MPS,
+        MAX_ESTIMATED_SPEED_MPS
+      );
+      const projected = projectTowardsPoint(
+        startLat,
+        startLon,
+        nextStopStation.lat,
+        nextStopStation.lon,
+        blendedSpeedMps * intervalSeconds
+      );
+      return {
+        kind: "linear",
+        startLat,
+        startLon,
+        endLat: projected.lat,
+        endLon: projected.lon,
+        durationMs: animationDurationMs
+      };
+    }
+
+    const projected = projectTowardsPoint(
+      startLat,
+      startLon,
+      nextStopStation.lat,
+      nextStopStation.lon,
+      baseSpeedMps * intervalSeconds
+    );
+    return {
+      kind: "linear",
+      startLat,
+      startLon,
+      endLat: projected.lat,
+      endLon: projected.lon,
+      durationMs: animationDurationMs
+    };
+  }
+
+  if (headingDegrees !== null) {
+    const projected = projectByHeading(
+      startLat,
+      startLon,
+      headingDegrees,
+      baseSpeedMps * intervalSeconds
+    );
+    return {
+      kind: "linear",
+      startLat,
+      startLon,
+      endLat: projected.lat,
+      endLon: projected.lon,
+      durationMs: animationDurationMs
+    };
+  }
+
+  return {
+    kind: "linear",
+    startLat,
+    startLon,
+    endLat: vehicle.lat,
+    endLon: vehicle.lon,
+    durationMs: animationDurationMs
+  };
+}
+
+function interpolateWithMotionPlan(
+  plan: VehicleMotionPlan,
+  elapsedMs: number,
+  lineTracks: LineTrack[]
+): { lat: number; lon: number } {
+  if (plan.kind === "dwell") {
+    return {
+      lat: plan.lat,
+      lon: plan.lon
+    };
+  }
+
+  if (plan.kind === "arrive-dwell") {
+    if (elapsedMs <= plan.moveDurationMs) {
+      const progress = clamp(elapsedMs / plan.moveDurationMs, 0, 1);
+      return interpolateLinearPosition(
+        plan.startLat,
+        plan.startLon,
+        plan.stationLat,
+        plan.stationLon,
+        progress
+      );
+    }
+
+    return {
+      lat: plan.stationLat,
+      lon: plan.stationLon
+    };
+  }
+
+  if (plan.kind === "track-arrive-dwell") {
+    const track = lineTracks[plan.trackIndex];
+    if (!track) {
+      return {
+        lat: 0,
+        lon: 0
+      };
+    }
+
+    if (elapsedMs <= plan.moveDurationMs) {
+      const progress = clamp(elapsedMs / plan.moveDurationMs, 0, 1);
+      const offset =
+        plan.startOffsetMeters +
+        (plan.stationOffsetMeters - plan.startOffsetMeters) * progress;
+      return interpolateOnTrack(track, offset);
+    }
+
+    return interpolateOnTrack(track, plan.stationOffsetMeters);
+  }
+
+  if (plan.kind === "track-linear") {
+    const track = lineTracks[plan.trackIndex];
+    if (!track) {
+      return {
+        lat: 0,
+        lon: 0
+      };
+    }
+
+    const progress = clamp(elapsedMs / plan.durationMs, 0, 1);
+    const offset =
+      plan.startOffsetMeters +
+      (plan.endOffsetMeters - plan.startOffsetMeters) * progress;
+    return interpolateOnTrack(track, offset);
+  }
+
+  const progress = clamp(elapsedMs / plan.durationMs, 0, 1);
+  return interpolateLinearPosition(
+    plan.startLat,
+    plan.startLon,
+    plan.endLat,
+    plan.endLon,
+    progress
+  );
+}
+
+function motionPlanDurationMs(plan: VehicleMotionPlan): number {
+  if (plan.kind === "arrive-dwell") {
+    return plan.moveDurationMs + plan.dwellDurationMs;
+  }
+
+  if (plan.kind === "track-arrive-dwell") {
+    return plan.moveDurationMs + plan.dwellDurationMs;
+  }
+
+  return plan.durationMs;
 }
 
 type DashboardStatus = "loading" | "ok" | "error" | "idle";
@@ -149,6 +941,7 @@ export default function BlueLineDashboard() {
   const requestSeqRef = useRef(0);
   const vehicleIconCacheRef = useRef<Map<string, DivIcon>>(new Map());
   const displayedVehiclesRef = useRef<CtaRailVehicle[]>([]);
+  const previousSampleByIdRef = useRef<Map<string, VehicleSample>>(new Map());
 
   const selectedLineLabels = useMemo(
     () =>
@@ -162,6 +955,37 @@ export default function BlueLineDashboard() {
     () => new Set<CtaRailLineId>(selectedLines),
     [selectedLines]
   );
+  const lineTracksByLine = useMemo(() => {
+    const map = new Map<CtaRailLineId, LineTrack[]>();
+    for (const lineId of CTA_RAIL_LINE_IDS) {
+      map.set(
+        lineId,
+        buildLineTracks(CTA_RAIL_LINE_CONFIG[lineId].pathSegments)
+      );
+    }
+
+    return map;
+  }, []);
+  const stationByNameByLine = useMemo(() => {
+    const map = new Map<CtaRailLineId, Map<string, (typeof CTA_STATIONS)[number]>>();
+
+    for (const lineId of CTA_RAIL_LINE_IDS) {
+      const stationByName = new Map<string, (typeof CTA_STATIONS)[number]>();
+      for (const station of CTA_STATIONS) {
+        if (!station.lines.includes(lineId)) {
+          continue;
+        }
+
+        const normalizedName = normalizeStationName(station.name);
+        if (!stationByName.has(normalizedName)) {
+          stationByName.set(normalizedName, station);
+        }
+      }
+      map.set(lineId, stationByName);
+    }
+
+    return map;
+  }, []);
   const terminalStationIdsByLine = useMemo(() => {
     const map = new Map<CtaRailLineId, Set<string>>();
     for (const lineId of CTA_RAIL_LINE_IDS) {
@@ -201,7 +1025,7 @@ export default function BlueLineDashboard() {
   }, []);
 
   const animateVehicles = useCallback(
-    (nextVehicles: CtaRailVehicle[], intervalMs: number) => {
+    (nextVehicles: CtaRailVehicle[], intervalMs: number, sampledAtMs: number) => {
       stopAnimation();
 
       const setFrame = (frameVehicles: CtaRailVehicle[]) => {
@@ -209,7 +1033,7 @@ export default function BlueLineDashboard() {
         setVehicles(frameVehicles);
       };
 
-      if (nextVehicles.length === 0 || displayedVehiclesRef.current.length === 0) {
+      if (nextVehicles.length === 0) {
         setFrame(nextVehicles);
         return;
       }
@@ -217,37 +1041,70 @@ export default function BlueLineDashboard() {
       const fromById = new Map(
         displayedVehiclesRef.current.map((vehicle) => [vehicle.id, vehicle])
       );
-      const animationDurationMs = Math.max(
-        MIN_ANIMATION_DURATION_MS,
-        Math.min(MAX_ANIMATION_DURATION_MS, intervalMs - 450)
+      const motionPlanByVehicleId = new Map<string, VehicleMotionPlan>();
+
+      for (const nextVehicle of nextVehicles) {
+        const currentDisplayedVehicle = fromById.get(nextVehicle.id);
+        const startLat = currentDisplayedVehicle?.lat ?? nextVehicle.lat;
+        const startLon = currentDisplayedVehicle?.lon ?? nextVehicle.lon;
+        const lineTracks = lineTracksByLine.get(nextVehicle.line) ?? [];
+        const nextStopStation = stationByNameByLine
+          .get(nextVehicle.line)
+          ?.get(normalizeStationName(nextVehicle.nextStop));
+        const previousSample = previousSampleByIdRef.current.get(nextVehicle.id);
+
+        motionPlanByVehicleId.set(
+          nextVehicle.id,
+          buildMotionPlan(
+            startLat,
+            startLon,
+            nextVehicle,
+            intervalMs,
+            sampledAtMs,
+            previousSample,
+            nextStopStation,
+            lineTracks
+          )
+        );
+      }
+      const maxDurationMs = Math.max(
+        ...Array.from(motionPlanByVehicleId.values()).map((plan) =>
+          motionPlanDurationMs(plan)
+        )
       );
       const startTs = performance.now();
 
       const tick = (now: number) => {
         const elapsedMs = now - startTs;
-        const progress = Math.min(elapsedMs / animationDurationMs, 1);
-        const easedProgress = easeInOutCubic(progress);
 
         const frameVehicles = nextVehicles.map((targetVehicle) => {
-          const originVehicle = fromById.get(targetVehicle.id);
-          if (!originVehicle) {
-            return targetVehicle;
-          }
+          const fallbackPlan: VehicleMotionPlan = {
+            kind: "linear",
+            startLat: targetVehicle.lat,
+            startLon: targetVehicle.lon,
+            endLat: targetVehicle.lat,
+            endLon: targetVehicle.lon,
+            durationMs: MIN_ANIMATION_DURATION_MS
+          };
+          const motionPlan =
+            motionPlanByVehicleId.get(targetVehicle.id) ?? fallbackPlan;
+          const lineTracks = lineTracksByLine.get(targetVehicle.line) ?? [];
+          const interpolated = interpolateWithMotionPlan(
+            motionPlan,
+            elapsedMs,
+            lineTracks
+          );
 
           return {
             ...targetVehicle,
-            lat:
-              originVehicle.lat +
-              (targetVehicle.lat - originVehicle.lat) * easedProgress,
-            lon:
-              originVehicle.lon +
-              (targetVehicle.lon - originVehicle.lon) * easedProgress
+            lat: interpolated.lat,
+            lon: interpolated.lon
           };
         });
 
         setFrame(frameVehicles);
 
-        if (progress < 1) {
+        if (elapsedMs < maxDurationMs) {
           rafIdRef.current = window.requestAnimationFrame(tick);
         } else {
           rafIdRef.current = null;
@@ -256,7 +1113,7 @@ export default function BlueLineDashboard() {
 
       rafIdRef.current = window.requestAnimationFrame(tick);
     },
-    [stopAnimation]
+    [lineTracksByLine, stationByNameByLine, stopAnimation]
   );
 
   const fetchFeed = useCallback(async () => {
@@ -281,11 +1138,21 @@ export default function BlueLineDashboard() {
       }
 
       const nextIntervalMs = payload.pollIntervalMs || FALLBACK_POLL_INTERVAL_MS;
-      animateVehicles(payload.vehicles, nextIntervalMs);
+      const sampledAtMs = Date.now();
+      animateVehicles(payload.vehicles, nextIntervalMs, sampledAtMs);
       setUpdatedAt(payload.updatedAt);
       setStatus("ok");
       setStatusText("Live");
       setPollIntervalMs(nextIntervalMs);
+      previousSampleByIdRef.current = new Map(
+        payload.vehicles.map((vehicle) => [
+          vehicle.id,
+          {
+            vehicle,
+            sampledAtMs
+          }
+        ])
+      );
     } catch (error) {
       if (requestSeq !== requestSeqRef.current) {
         return;
@@ -301,6 +1168,7 @@ export default function BlueLineDashboard() {
   useEffect(() => {
     stopAnimation();
     displayedVehiclesRef.current = [];
+    previousSampleByIdRef.current = new Map();
     setVehicles([]);
     setUpdatedAt(null);
 
@@ -509,7 +1377,7 @@ export default function BlueLineDashboard() {
             <p className="error-note">{statusText}</p>
           ) : (
             <p>
-              Select one, several, or all lines. Markers interpolate between samples.
+              Select one, several, or all lines. Markers interpolate continuously with brief station dwells.
             </p>
           )}
 
