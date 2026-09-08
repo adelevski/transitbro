@@ -96,3 +96,11 @@ no repository secret is required for CI because tests use mocked feed responses.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/HANDOFF.md](docs/HANDOFF.md)
 - [AGENTS.md](AGENTS.md)
+
+## License and third-party material
+
+Project-authored software and documentation are licensed under [MIT](LICENSE).
+This does not relicense CTA feeds or GTFS-derived route and station data in
+`lib/ctaLinePaths.ts` and `lib/ctaStations.ts`. Their provider terms still apply.
+Dependencies, CARTO/OpenStreetMap tiles, and other third-party assets retain their
+own terms and required attribution. The map's existing attribution is preserved.

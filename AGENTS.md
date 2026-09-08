@@ -27,8 +27,8 @@ all-line coverage as a future task.
   infrastructure only for demonstrated needs and minimize any collected data.
 - Deployment requires a Node.js server; this repository is not a static export.
   `CTA_TRAIN_POSITIONS_URL` is a test override, not a normal production setting.
-- No source license is present; do not imply Apache-2.0 applies without a source
-  ownership and licensing decision. Provider data and map attribution stay intact.
+- Project-authored source uses [MIT](LICENSE). CTA feeds and GTFS-derived data,
+  map tiles, dependencies, and third-party assets retain their own terms.
 
 ## Working agreements
 
