@@ -10,8 +10,8 @@ const BlueLineDashboard = dynamic(
       <main className="loading-shell">
         <p>Loading transitbro...</p>
       </main>
-    )
-  }
+    ),
+  },
 );
 
 export default function BlueLineDashboardClient() {

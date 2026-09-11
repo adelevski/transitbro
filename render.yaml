@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: transitbro
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.0
+      - key: CTA_API_KEY
+        sync: false
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

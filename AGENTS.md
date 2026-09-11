@@ -1,6 +1,6 @@
 # transitbro agent guide
 
-Maintain the existing live CTA rail dashboard for all supported lines. Keep feed
+Maintain the unified Chicago CTA and Boston MBTA station/map dashboard. Keep feed
 normalization and the browser presentation separate; do not treat implemented
 all-line coverage as a future task.
 
@@ -27,6 +27,10 @@ all-line coverage as a future task.
   infrastructure only for demonstrated needs and minimize any collected data.
 - Deployment requires a Node.js server; this repository is not a static export.
   `CTA_TRAIN_POSITIONS_URL` is a test override, not a normal production setting.
+- Boston uses its official anonymous browser API. Keep per-record source times and
+  prediction provenance explicit; do not invent live positions or arrivals.
+- Read `docs/OPERATIONS.md` for zero-cost hosting and shared request limits. Keep
+  one Free instance, no payment method or paid overages. Budgets reset on restart.
 - Project-authored source uses [MIT](LICENSE). CTA feeds and GTFS-derived data,
   map tiles, dependencies, and third-party assets retain their own terms.
 

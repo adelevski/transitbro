@@ -1,106 +1,93 @@
 # transitbro
 
-Live public transit dashboard for Chicago CTA rail, built to evolve in small iterations.
+A snowball transit dashboard for Chicago CTA and Boston MBTA. It combines
+transitbro's dark rail map with traincountdown's useful station-arrival board.
 
-## Current scope (Iteration 5)
-- Live CTA rail train positions for all lines (Train Tracker `ttpositions`):
-  - `blue`, `red`, `brn`, `g`, `org`, `p`, `pink`, `y`.
-- Dark-theme map dashboard with:
-  - checkbox panel for line selection with none/one/some/all active,
-  - map layer toggles for trains and stations,
-  - live multi-line vehicle markers,
-  - direction arrows rendered inside train markers,
-  - train popup status badge (`On time` / `Late`),
-  - continuous interpolation between samples with station-aware dwell pauses,
-  - per-line route overlays from CTA GTFS shape data for all CTA rail lines,
-  - collapsible run lists per selected line, grouped by destination,
-  - next-stop ETA shown for each run,
-  - CTA station markers with zoom-aware visibility:
-    - terminal stations always visible,
-    - intermediate stations shown only when zoomed in.
-- Server-side CTA proxy route so API key is never exposed to the browser.
-- Deterministic normalization and API tests for CTA response shapes, timestamps,
-  invalid coordinates, line selection, and upstream errors.
+- Chicago: all eight CTA rail lines, train reports, route/station map and
+  selectable station arrivals grouped by destination.
+- Boston: Red, Orange, Blue, Green B/C/D/E and Mattapan vehicle reports and
+  station predictions from the official MBTA V3 API. Station membership is loaded
+  per route; Boston route geometry is not currently drawn.
+- Countdown clocks run locally. Estimated and scheduled arrivals are distinct;
+  uncertain CTA predictions and missing report times are identified.
+- Positions fade after 90 seconds and disappear after five minutes. Brief marker
+  transitions end at the latest reported position; no future motion is invented.
+- Keyboard station selection and train lists, named markers, responsive layout,
+  stable status announcements and reduced-motion support.
 
-## Tech stack
-- Next.js (App Router) + TypeScript
-- React Leaflet + OpenStreetMap tiles
-- CTA Train Tracker API (server-side fetch)
+No accounts, advertising, analytics, database or paid APIs. Provider and hosting
+limits still apply. This independent project is not affiliated with the agencies.
 
-## Quick start
-1. Install Node.js 22 or newer.
-2. Install the locked dependencies:
-   ```bash
-   npm ci
-   ```
-3. Create `.env.local` from `.env.example` and set `CTA_API_KEY`.
-4. Run:
-   ```bash
-   npm run dev
-   ```
-5. Open `http://localhost:3000`.
+## Run locally
 
-## Verification
+Use Node.js 22 or newer:
 
-Run the complete local verification suite:
-
-```bash
-npm run check
+```sh
+npm ci
+cp .env.example .env.local
+# Put your existing CTA Train Tracker key in .env.local.
+npm run dev
 ```
 
-This runs deterministic tests, the TypeScript compiler, and a production build.
-The same command runs in GitHub Actions for pushes to `main` and pull requests.
+Open `http://localhost:3000`. The CTA key stays in server code. Never prefix it
+with `NEXT_PUBLIC_`, commit it or put it in a frontend hosting variable. Boston
+uses anonymous browser requests and works without a CTA key. Without that key,
+Chicago's map remains available and its live feeds clearly fail.
 
-## Environment variables
-- `CTA_API_KEY` (required): your CTA Train Tracker API key.
-- `CTA_TRAIN_POSITIONS_URL` (optional): override endpoint for tests.
-- `CTA_POLL_INTERVAL_MS` (optional): polling interval in milliseconds.
-  - Default: `5000`
-  - Enforced bounds: `5000` to `60000`
+`npm run check` runs deterministic fixtures, strict TypeScript and the production
+build. Tests do not need a key or external feed. `npm run build` and
+`npm run start` run the production server.
 
-## API route
-- `GET /api/cta/blue-line`
-- `GET /api/cta/red-line`
-- `GET /api/cta/rail?lines=blue,red,brn,g,org,p,pink,y`
-  - Returns normalized vehicles:
-    - `id`, `line`, `runNumber`, `lat`, `lon`, `heading`, `destination`, `nextStop`, `nextStopArrivalAt`, `updatedAt`.
-  - `lines` query can include one, several, or all supported line IDs.
+## Deployment and zero-cost operation
 
-## Important notes
-- Polling every 5 seconds is reasonable for local development and single-user usage.
-- Upstream requests time out after 10 seconds. Browser errors omit raw provider
-  details so request URLs and server credentials cannot leak.
-- Feed fields and Chicago-local timestamp handling follow the official
-  [CTA Train Tracker API documentation](https://www.transitchicago.com/developers/ttdocs/).
-- CTA Train Tracker terms currently mention a default daily API transaction limit of 100,000 per API key, so total traffic across all clients should be monitored as usage grows.
-- The app is intentionally modular and can be extended line-by-line.
+The full dashboard is a standard Next.js Node server. GitHub Pages alone cannot
+serve CTA: CTA requires a private key and its endpoints do not allow browser CORS.
+Use one **Free** Render web service with `render.yaml`, or the same Node commands
+on an existing no-cost host. There is no database, persistent disk or scheduled job.
 
-## Production deployment
+- Repository: `snowball-projects/transitbro`; use the reviewed main/launch branch.
+- Build: `npm ci && npm run build`.
+- Start: `npm run start -- --hostname 0.0.0.0 --port $PORT`.
+- Environment: `CTA_API_KEY` as a private runtime secret, `NODE_VERSION=24.14.0`.
+  Leave `CTA_TRAIN_POSITIONS_URL` unset in production.
+- Health check: `/api/health`. It does not fetch upstream data or prevent sleep.
+- Keep one process/instance and the Free service plan. Do not attach a payment
+  method, enable paid overages or purchase capacity for this project.
 
-Transitbro runs as a standard Node.js Next.js server; static-only hosting is not
-supported because the CTA key must remain on the server.
+The existing Render workspace was verified on September 11, 2026 as Hobby with
+no payment method and no credits. That account configuration is what makes
+allowance exhaustion suspend service rather than bill. Reverify it when moving
+or reviving the service. Free service sleep can add about a minute to first load;
+shared workspace hours/bandwidth can make the whole service unavailable. See
+[operations and costs](docs/OPERATIONS.md) for exact limits and recovery.
 
-1. Use Node.js 22 or newer and run `npm ci`.
-2. Configure `CTA_API_KEY` in the hosting provider's server-side environment.
-   Never prefix it with `NEXT_PUBLIC_`.
-3. Run `npm run build`, then start with `npm run start`.
-4. Allow outbound HTTPS access to CTA Train Tracker. Browsers also need access
-   to the configured CARTO/OpenStreetMap tile endpoints.
+Publication status belongs in [handoff](docs/HANDOFF.md). A successful build or
+live local smoke test does not itself mean a public deployment is live.
 
-Leave `CTA_TRAIN_POSITIONS_URL` unset in normal production deployments. A
-platform such as Vercel can use the same build command and environment variable;
-no repository secret is required for CI because tests use mocked feed responses.
+## Configuration and API
 
-## Project continuity
-- [docs/ROADMAP.md](docs/ROADMAP.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/HANDOFF.md](docs/HANDOFF.md)
-- [AGENTS.md](AGENTS.md)
+- `CTA_API_KEY`: required only for CTA live data; server only.
+- `CTA_POLL_INTERVAL_MS`: optional advertised interval, bounded to 20–60 seconds.
+  Shared positions refresh at most every 20 seconds; browser default is 20 seconds.
+- `CTA_TRAIN_POSITIONS_URL`: testing override only.
 
-## License and third-party material
+The existing `/api/cta/blue-line`, `/api/cta/red-line` and
+`/api/cta/rail?lines=blue,red` endpoints remain. `lines=` is idle. New:
+`/api/cta/arrivals?station=40670`. Public errors never include upstream URLs or keys.
+Existing vehicle fields remain; unknown `isDelayed` is now `null`, unknown
+`updatedAt` is an empty string, and new `fetchedAt`/`stale` fields separate receipt
+from provider freshness. Consumers must handle those honest unknown values.
 
-Project-authored software and documentation are licensed under [MIT](LICENSE).
-This does not relicense CTA feeds or GTFS-derived route and station data in
-`lib/ctaLinePaths.ts` and `lib/ctaStations.ts`. Their provider terms still apply.
-Dependencies, CARTO/OpenStreetMap tiles, and other third-party assets retain their
-own terms and required attribution. The map's existing attribution is preserved.
+## Continuity and rights
+
+- [Architecture and adding cities](docs/ARCHITECTURE.md)
+- [Operating limits and sources](docs/OPERATIONS.md)
+- [Extraction and preservation](docs/CONSOLIDATION.md)
+- [Roadmap](docs/ROADMAP.md) · [Handoff](docs/HANDOFF.md)
+
+Original software and documentation use [MIT](LICENSE); existing copyright
+notices are preserved. CTA feeds and inherited GTFS-derived paths/stations,
+MassDOT/MBTA data, OpenStreetMap tiles and dependencies retain their own terms.
+Data provided by Chicago Transit Authority and MassDOT / MBTA. The map includes
+OpenStreetMap attribution. Provider logos and traincountdown's unproven image
+are not republished. See [data terms](docs/OPERATIONS.md#data-and-attribution).

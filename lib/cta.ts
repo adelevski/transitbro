@@ -1,19 +1,19 @@
 import {
   CTA_RAIL_LINE_CONFIG,
-  type CtaRailLineConfig
+  type CtaRailLineConfig,
 } from "@/lib/ctaRailLines";
 import type {
   CtaRailFeedResponse,
   CtaRailLineId,
   CtaRailVehicle,
-  CtaSingleLineFeedResponse
+  CtaSingleLineFeedResponse,
 } from "@/lib/types";
 
 const DEFAULT_POSITIONS_URL =
   "https://lapi.transitchicago.com/api/1.0/ttpositions.aspx";
-const DEFAULT_POLL_INTERVAL_MS = 5000;
+const DEFAULT_POLL_INTERVAL_MS = 20000;
 const UPSTREAM_TIMEOUT_MS = 10_000;
-const MIN_POLL_INTERVAL_MS = 5000;
+const MIN_POLL_INTERVAL_MS = 20000;
 const MAX_POLL_INTERVAL_MS = 60000;
 const CTA_TIME_ZONE = "America/Chicago";
 
@@ -25,12 +25,12 @@ const ctaTimeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
-  hourCycle: "h23"
+  hourCycle: "h23",
 });
 
 type JsonLike = Record<string, unknown>;
 
-function toArray<T>(value: T | T[] | null | undefined): T[] {
+export function toArray<T>(value: T | T[] | null | undefined): T[] {
   if (value === null || value === undefined) {
     return [];
   }
@@ -38,7 +38,7 @@ function toArray<T>(value: T | T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function toString(value: unknown, fallback = ""): string {
+export function toString(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
     return value;
   }
@@ -68,13 +68,14 @@ function getCtaTimeParts(timestampMs: number): Record<string, number> {
     ctaTimeFormatter
       .formatToParts(timestampMs)
       .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)])
+      .map((part) => [part.type, Number(part.value)]),
   );
 }
 
 function parseCtaLocalTimestamp(value: string): string | null {
-  const match =
-    /^(\d{4})-?(\d{2})-?(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(value);
+  const match = /^(\d{4})-?(\d{2})-?(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(
+    value,
+  );
   if (!match) {
     return null;
   }
@@ -87,7 +88,7 @@ function parseCtaLocalTimestamp(value: string): string | null {
     day: Number(dayText),
     hour: Number(hourText),
     minute: Number(minuteText),
-    second: Number(secondText)
+    second: Number(secondText),
   };
   const localAsUtc = Date.UTC(
     expected.year,
@@ -95,7 +96,7 @@ function parseCtaLocalTimestamp(value: string): string | null {
     expected.day,
     expected.hour,
     expected.minute,
-    expected.second
+    expected.second,
   );
   const localAsUtcDate = new Date(localAsUtc);
 
@@ -119,7 +120,7 @@ function parseCtaLocalTimestamp(value: string): string | null {
       parts.day,
       parts.hour,
       parts.minute,
-      parts.second
+      parts.second,
     );
     const nextTimestampMs = localAsUtc - (renderedAsUtc - timestampMs);
     if (nextTimestampMs === timestampMs) {
@@ -154,13 +155,17 @@ export function normalizeCtaTimestamp(raw: unknown): string | null {
     return ctaTimestamp;
   }
 
+  // Do not let Date.parse reinterpret invalid Chicago-local dates in the host timezone.
+  if (!/(Z|[+-]\d{2}:?\d{2})$/i.test(value)) return null;
   const timestampMs = Date.parse(value);
-  return Number.isFinite(timestampMs) ? new Date(timestampMs).toISOString() : null;
+  return Number.isFinite(timestampMs)
+    ? new Date(timestampMs).toISOString()
+    : null;
 }
 
 function normalizeDirection(
   raw: unknown,
-  line: CtaRailLineConfig
+  line: CtaRailLineConfig,
 ): string | null {
   const code = toString(raw).trim();
 
@@ -171,7 +176,8 @@ function normalizeDirection(
   return code.length > 0 ? code : null;
 }
 
-function parseDelayFlag(raw: unknown): boolean {
+export function parseDelayFlag(raw: unknown): boolean | null {
+  if (raw === undefined || raw === null || raw === "") return null;
   const value = toString(raw).trim().toLowerCase();
   return value === "1" || value === "true" || value === "y" || value === "yes";
 }
@@ -180,7 +186,9 @@ function extractTrains(ctatt: JsonLike): JsonLike[] {
   const routes = toArray(ctatt.route as JsonLike | JsonLike[]);
 
   if (routes.length > 0) {
-    return routes.flatMap((route) => toArray(route.train as JsonLike | JsonLike[]));
+    return routes.flatMap((route) =>
+      toArray(route.train as JsonLike | JsonLike[]),
+    );
   }
 
   // Defensive fallback in case CTA returns a flattened shape.
@@ -192,7 +200,7 @@ function getPollIntervalMs(): number {
   return Number.isFinite(configuredIntervalMs)
     ? Math.max(
         MIN_POLL_INTERVAL_MS,
-        Math.min(MAX_POLL_INTERVAL_MS, configuredIntervalMs)
+        Math.min(MAX_POLL_INTERVAL_MS, configuredIntervalMs),
       )
     : DEFAULT_POLL_INTERVAL_MS;
 }
@@ -201,7 +209,7 @@ function normalizeVehicle(
   train: JsonLike,
   line: CtaRailLineConfig,
   fallbackUpdatedAt: string,
-  index: number
+  index: number,
 ): CtaRailVehicle | null {
   const lat = toNumber(train.lat);
   const lon = toNumber(train.lon);
@@ -242,20 +250,19 @@ function normalizeVehicle(
     nextStop: toString(train.nextStaNm) || "Unknown next stop",
     nextStopArrivalAt,
     direction: normalizeDirection(train.trDr, line),
-    updatedAt
+    updatedAt,
   };
 }
 
-function normalizeLineFeed(
+export function normalizeLineFeed(
   ctatt: JsonLike,
-  line: CtaRailLineConfig
+  line: CtaRailLineConfig,
 ): CtaSingleLineFeedResponse {
-  const fallbackUpdatedAt =
-    normalizeCtaTimestamp(ctatt.tmst) ?? new Date().toISOString();
+  const fallbackUpdatedAt = normalizeCtaTimestamp(ctatt.tmst) ?? "";
   const trains = extractTrains(ctatt);
   const vehicles = trains
     .map((train, index) =>
-      normalizeVehicle(train, line, fallbackUpdatedAt, index)
+      normalizeVehicle(train, line, fallbackUpdatedAt, index),
     )
     .filter((vehicle): vehicle is CtaRailVehicle => vehicle !== null)
     .sort((a, b) => a.runNumber.localeCompare(b.runNumber));
@@ -269,21 +276,23 @@ function normalizeLineFeed(
       ? Math.max(...vehicleTimestamps)
       : Number.isFinite(fallbackTimestamp)
         ? fallbackTimestamp
-        : Date.now();
+        : NaN;
 
   return {
     source: "CTA Train Tracker API",
     route: line.id,
     routes: [line.id],
-    updatedAt: new Date(newestVehicleTs).toISOString(),
+    updatedAt: Number.isFinite(newestVehicleTs)
+      ? new Date(newestVehicleTs).toISOString()
+      : "",
     vehicles,
-    pollIntervalMs: getPollIntervalMs()
+    pollIntervalMs: getPollIntervalMs(),
   };
 }
 
 export async function fetchCtaRailLinePositions(
   apiKey: string,
-  lineId: CtaRailLineId
+  lineId: CtaRailLineId,
 ): Promise<CtaSingleLineFeedResponse> {
   const line = CTA_RAIL_LINE_CONFIG[lineId];
   const baseUrl = process.env.CTA_TRAIN_POSITIONS_URL || DEFAULT_POSITIONS_URL;
@@ -296,8 +305,8 @@ export async function fetchCtaRailLinePositions(
     cache: "no-store",
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     headers: {
-      Accept: "application/json"
-    }
+      Accept: "application/json",
+    },
   });
 
   if (!response.ok) {
@@ -322,38 +331,68 @@ export async function fetchCtaRailLinePositions(
 
 export async function fetchCtaRailPositions(
   apiKey: string,
-  lineIds: CtaRailLineId[]
+  lineIds: CtaRailLineId[],
 ): Promise<CtaRailFeedResponse> {
-  const feeds = await Promise.all(
-    lineIds.map((lineId) => fetchCtaRailLinePositions(apiKey, lineId))
+  if (!lineIds.length)
+    return {
+      source: "CTA Train Tracker API",
+      routes: [],
+      updatedAt: "",
+      vehicles: [],
+      pollIntervalMs: getPollIntervalMs(),
+    };
+  const url = new URL(
+    process.env.CTA_TRAIN_POSITIONS_URL || DEFAULT_POSITIONS_URL,
   );
-
-  const vehicles = feeds
-    .flatMap((feed) => feed.vehicles)
-    .sort((a, b) => a.id.localeCompare(b.id));
-  const newestVehicleTs =
-    feeds
-      .map((feed) => Date.parse(feed.updatedAt))
-      .filter((value) => Number.isFinite(value))
-      .sort((a, b) => b - a)[0] ?? Date.now();
-
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set(
+    "rt",
+    lineIds.map((id) => CTA_RAIL_LINE_CONFIG[id].ctaRouteId).join(","),
+  );
+  url.searchParams.set("outputType", "JSON");
+  const response = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error("CTA positions unavailable");
+  const payload = await response.json();
+  const ctatt = payload?.ctatt;
+  if (!ctatt || toString(ctatt.errCd, "0") !== "0")
+    throw new Error("CTA positions unavailable");
+  const routes = toArray<JsonLike>(ctatt.route);
+  const feeds = lineIds.map((id) => {
+    const route = routes.find(
+      (route) =>
+        route &&
+        toString(route["@name"]).toLowerCase() ===
+          CTA_RAIL_LINE_CONFIG[id].ctaRouteId.toLowerCase(),
+    );
+    if (!route) throw new Error("CTA omitted requested route");
+    return normalizeLineFeed({ ...ctatt, route }, CTA_RAIL_LINE_CONFIG[id]);
+  });
+  const times = feeds.map((feed) => Date.parse(feed.updatedAt));
+  // The oldest route governs freshness; a current route must not mask a frozen one.
+  const oldest = Math.min(...times);
   return {
     source: "CTA Train Tracker API",
     routes: lineIds,
-    updatedAt: new Date(newestVehicleTs).toISOString(),
-    vehicles,
-    pollIntervalMs: getPollIntervalMs()
+    updatedAt: Number.isFinite(oldest) ? new Date(oldest).toISOString() : "",
+    fetchedAt: new Date().toISOString(),
+    vehicles: feeds
+      .flatMap((feed) => feed.vehicles)
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    pollIntervalMs: getPollIntervalMs(),
   };
 }
 
 export async function fetchBlueLinePositions(
-  apiKey: string
+  apiKey: string,
 ): Promise<CtaSingleLineFeedResponse> {
   return fetchCtaRailLinePositions(apiKey, "blue");
 }
 
 export async function fetchRedLinePositions(
-  apiKey: string
+  apiKey: string,
 ): Promise<CtaSingleLineFeedResponse> {
   return fetchCtaRailLinePositions(apiKey, "red");
 }

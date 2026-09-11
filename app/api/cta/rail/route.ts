@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchCtaRailPositions } from "@/lib/cta";
+import { getCtaPositions } from "@/lib/ctaService";
 import { normalizeCtaRailLineSelection } from "@/lib/ctaRailLines";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate"
+  "Cache-Control": "no-store, no-cache, must-revalidate",
 };
 
 export async function GET(request: NextRequest) {
@@ -15,13 +15,12 @@ export async function GET(request: NextRequest) {
   if (!apiKey) {
     return NextResponse.json(
       {
-        error:
-          "Live transit data is unavailable. Please try again later."
+        error: "Live transit data is unavailable. Please try again later.",
       },
       {
         status: 503,
-        headers: NO_STORE_HEADERS
-      }
+        headers: NO_STORE_HEADERS,
+      },
     );
   }
 
@@ -32,24 +31,24 @@ export async function GET(request: NextRequest) {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   const lines = normalizeCtaRailLineSelection(requestedLines, {
-    fallbackToDefaultLine: !hasLinesParam
+    fallbackToDefaultLine: !hasLinesParam,
   });
 
   try {
-    const feed = await fetchCtaRailPositions(apiKey, lines);
+    const feed = await getCtaPositions(apiKey, lines);
     return NextResponse.json(feed, {
-      headers: NO_STORE_HEADERS
+      headers: NO_STORE_HEADERS,
     });
   } catch {
     // Upstream errors can echo request URLs containing the server credential.
     return NextResponse.json(
       {
-        error: "Live transit data could not be refreshed. Please try again."
+        error: "Live transit data could not be refreshed. Please try again.",
       },
       {
         status: 502,
-        headers: NO_STORE_HEADERS
-      }
+        headers: NO_STORE_HEADERS,
+      },
     );
   }
 }
