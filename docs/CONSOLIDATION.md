@@ -1,8 +1,8 @@
 # transitbro and traincountdown consolidation
 
 Reviewed September 11, 2026. Existing name stays transitbro. The maintained public
-source belongs at `snowball-projects/transitbro`; publication is coordinated after
-review. This is an implementation merge of useful behavior, not authorization to
+source is `snowball-projects/transitbro`; the reviewed implementation is published
+at [transitbro.onrender.com](https://transitbro.onrender.com/). This is an implementation merge of useful behavior, not authorization to
 delete either source repository or any backup.
 
 ## Preserved sources

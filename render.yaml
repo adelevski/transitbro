@@ -3,6 +3,8 @@ services:
     name: transitbro
     runtime: node
     plan: free
+    region: ohio
+    autoDeployTrigger: off
     buildCommand: npm ci && npm run build
     startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
