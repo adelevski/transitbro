@@ -34,6 +34,20 @@ keep-alive monitor is created. Stop or let the project sleep if allowances run o
 
 ## Deployment and recovery
 
+The public dashboard is [transitbro.onrender.com](https://transitbro.onrender.com/).
+The verified Render service is `transitbro` (`srv-dai6jknqj5pc73ej5nv0`), one
+**Free** Node service in **Ohio**. It reads the public
+`snowball-projects/transitbro` Git repository, branch `main`, with automatic deploys
+**Off**. `render.yaml` records `region: ohio` and `autoDeployTrigger: off` using the
+[official Blueprint schema](https://render.com/docs/blueprint-spec).
+
+For an update, merge the reviewed change after CI passes, then choose a manual
+Render deployment of that exact revision. Verify the public root/health endpoint,
+CTA positions/arrivals and Boston browser feed before recording it as live.
+A documentation or release metadata commit does not silently redeploy the service.
+The initial application revision and verification evidence are in
+[handoff](HANDOFF.md).
+
 Use `render.yaml` and the commands in the canonical README. Set `CTA_API_KEY`
 privately in the existing Render service environment; never in GitHub/public build
 variables. Missing configuration returns 503, and Boston can still use its direct

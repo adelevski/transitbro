@@ -4,9 +4,10 @@ Delivered: one station-arrival/map dashboard; Chicago all-line reports and stati
 queues; Boston subway/light-rail reports and predictions; stale/unknown states;
 bounded polling/cache; cancellation; accessible controls; measured transitions.
 
-Next operational work: verify the public Free Render deployment and recorded
-billing limits, keep CTA credentials private, and verify inherited static CTA
-geometry/stations against a reproducible current GTFS snapshot.
+The public Free Render deployment and no-payment workspace configuration are
+verified; keep CTA credentials private and recheck service limits when reviving
+or moving it. Next maintenance work: verify inherited static CTA geometry/stations
+against a reproducible current GTFS snapshot.
 
 Possible additions require evidence of usefulness and a sustainable free source:
 service alerts in-page, Boston route geometry, another city, or station accessibility

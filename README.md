@@ -1,5 +1,7 @@
 # transitbro
 
+[Open the live dashboard](https://transitbro.onrender.com/)
+
 A snowball transit dashboard for Chicago CTA and Boston MBTA. It combines
 transitbro's dark rail map with traincountdown's useful station-arrival board.
 
@@ -45,7 +47,9 @@ serve CTA: CTA requires a private key and its endpoints do not allow browser COR
 Use one **Free** Render web service with `render.yaml`, or the same Node commands
 on an existing no-cost host. There is no database, persistent disk or scheduled job.
 
-- Repository: `snowball-projects/transitbro`; use the reviewed main/launch branch.
+- Repository: `snowball-projects/transitbro`, public Git connection on `main`.
+- Hosting: one Free Render service in Ohio. Automatic deploys are **Off**; deploy
+  reviewed, passing revisions manually. `render.yaml` records these settings.
 - Build: `npm ci && npm run build`.
 - Start: `npm run start -- --hostname 0.0.0.0 --port $PORT`.
 - Environment: `CTA_API_KEY` as a private runtime secret, `NODE_VERSION=24.14.0`.
@@ -61,8 +65,8 @@ or reviving the service. Free service sleep can add about a minute to first load
 shared workspace hours/bandwidth can make the whole service unavailable. See
 [operations and costs](docs/OPERATIONS.md) for exact limits and recovery.
 
-Publication status belongs in [handoff](docs/HANDOFF.md). A successful build or
-live local smoke test does not itself mean a public deployment is live.
+The public dashboard and both city feeds were verified on September 11, 2026.
+[Handoff](docs/HANDOFF.md) records the deployed application revision and checks.
 
 ## Configuration and API
 
