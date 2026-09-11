@@ -3,9 +3,9 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "transitbro | CTA Rail Live",
+  title: "transitbro | Trains & arrivals",
   description:
-    "Live dashboard for CTA rail train positions in Chicago."
+    "Train reports and station arrivals for Chicago CTA and Boston MBTA.",
 };
 
 type RootLayoutProps = Readonly<{

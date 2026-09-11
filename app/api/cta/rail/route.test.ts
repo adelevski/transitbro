@@ -30,17 +30,16 @@ describe("GET /api/cta/rail", () => {
     delete process.env.CTA_API_KEY;
 
     const response = await GET(
-      new NextRequest("https://transitbro.test/api/cta/rail?lines=blue")
+      new NextRequest("https://transitbro.test/api/cta/rail?lines=blue"),
     );
 
     assert.equal(response.status, 503);
     assert.equal(
       response.headers.get("cache-control"),
-      "no-store, no-cache, must-revalidate"
+      "no-store, no-cache, must-revalidate",
     );
     assert.deepEqual(await response.json(), {
-      error:
-        "Live transit data is unavailable. Please try again later."
+      error: "Live transit data is unavailable. Please try again later.",
     });
   });
 
@@ -49,42 +48,45 @@ describe("GET /api/cta/rail", () => {
     process.env.CTA_TRAIN_POSITIONS_URL = "https://cta.test/positions";
     globalThis.fetch = (async (input) => {
       fetchCallCount += 1;
-      const route = new URL(input.toString()).searchParams.get("rt");
+      const routes = new URL(input.toString()).searchParams
+        .get("rt")!
+        .split(",");
       return new Response(
         JSON.stringify({
           ctatt: {
             tmst: "20260827 13:45:00",
             errCd: "0",
-            route: {
+            route: routes.map((route) => ({
+              "@name": route,
               train: {
                 rn: route === "red" ? "200" : "100",
                 lat: "41.881",
-                lon: "-87.629"
-              }
-            }
-          }
-        })
+                lon: "-87.629",
+              },
+            })),
+          },
+        }),
       );
     }) as typeof fetch;
 
     const response = await GET(
       new NextRequest(
-        "https://transitbro.test/api/cta/rail?lines=red,BLUE,invalid,red"
-      )
+        "https://transitbro.test/api/cta/rail?lines=red,BLUE,invalid,red",
+      ),
     );
     const payload = await response.json();
 
     assert.equal(response.status, 200);
     assert.equal(
       response.headers.get("cache-control"),
-      "no-store, no-cache, must-revalidate"
+      "no-store, no-cache, must-revalidate",
     );
     assert.deepEqual(payload.routes, ["blue", "red"]);
     assert.deepEqual(
       payload.vehicles.map((vehicle: { id: string }) => vehicle.id),
-      ["blue-100", "red-200"]
+      ["blue-100", "red-200"],
     );
-    assert.equal(fetchCallCount, 2);
+    assert.equal(fetchCallCount, 1);
   });
 
   it("keeps the documented explicit-empty selection idle without an upstream call", async () => {
@@ -95,7 +97,7 @@ describe("GET /api/cta/rail", () => {
     }) as typeof fetch;
 
     const response = await GET(
-      new NextRequest("https://transitbro.test/api/cta/rail?lines=")
+      new NextRequest("https://transitbro.test/api/cta/rail?lines="),
     );
     const payload = await response.json();
 
@@ -106,7 +108,6 @@ describe("GET /api/cta/rail", () => {
   });
 });
 
-
 it("keeps credentials and raw upstream errors out of every API response", async () => {
   process.env.CTA_API_KEY = "synthetic-secret";
   globalThis.fetch = (async (_input, init) => {
@@ -115,13 +116,18 @@ it("keeps credentials and raw upstream errors out of every API response", async 
   }) as typeof fetch;
 
   const responses = [
-    await GET(new NextRequest("https://transitbro.test/api/cta/rail?lines=blue")),
+    await GET(
+      new NextRequest("https://transitbro.test/api/cta/rail?lines=blue"),
+    ),
     await getBlueLine(),
-    await getRedLine()
+    await getRedLine(),
   ];
   for (const response of responses) {
     assert.equal(response.status, 502);
-    assert.equal(response.headers.get("cache-control"), "no-store, no-cache, must-revalidate");
+    assert.equal(
+      response.headers.get("cache-control"),
+      "no-store, no-cache, must-revalidate",
+    );
     const body = await response.text();
     assert.ok(!body.includes("synthetic-secret"));
     assert.ok(body.includes("could not be refreshed"));
