@@ -11,9 +11,10 @@ merged the independently reviewed implementation; PR and main CI passed.
 Implemented the unified station board/map, kept all CTA rail lines and added
 Boston's anonymous direct-browser subway/light-rail feeds. Motion transitions
 between observations only. Unknown, stale, delayed, scheduled and uncertain data
-remain distinct. Original transitbro and traincountdown checkouts and backups
-remain preserved; see [consolidation](CONSOLIDATION.md). No repository retirement
-is authorized.
+remain distinct. The owner subsequently approved traincountdown's GitHub
+retirement and verified local cleanup on September 11, 2026. Original source
+and history are retained in private preservation archives; see
+[consolidation](CONSOLIDATION.md) for the current record.
 
 ### Verified deployment
 

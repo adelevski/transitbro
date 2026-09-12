@@ -582,6 +582,9 @@ function Dashboard({
             <a href="https://github.com/snowball-projects/transitbro">
               Source · MIT
             </a>
+            <a href="https://snowball-projects.github.io/operations/#transitbro">
+              Operations
+            </a>
             <span>
               by <a href="https://snowball-projects.github.io/">snowball</a>
             </span>
